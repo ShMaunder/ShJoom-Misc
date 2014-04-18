@@ -1,0 +1,522 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+xmlstarlet is required to run this build script
+Ubuntu/Debian: apt-get install xmlstarlet
+CentOS/RHEL: yum install xmlstarlet
+ -->
+<project name="shjoom" basedir="." default="main">
+
+	<property name="package" value="shjoom" override="true" />
+
+	<property name="script.dir" value="./_build/scripts" override="false" />
+
+	<property name="template.dir" value="./_build/template" override="false" />
+
+	<property name="updates.dir" value="./_build/updates" override="false" />
+
+	<property name="package.manifest" value="${template.dir}" override="false" />
+
+	<property name="package.version" value="1.0.0.trunk" override="false" />
+
+	<property name="package.dest" value="./_build/${package.version}" override="false" />
+
+	<tstamp>
+  		<format property="DATE" pattern="%c" locale="en_GB" />
+	</tstamp>
+
+	<!--
+	Usage:
+	1. Standard build
+	$ phing
+	2. Build and rename files with version
+	$ phing -Dpackage.version=1.0.1
+	-->
+
+	<target name="main" description="">
+
+		<echo message="Building ShJoom-Misc Version ${package.version} packages..." />
+
+		<!-- Cleanup build area -->
+		<if>
+			<available file="${package.dest}" type="dir" />
+			<then>
+				<delete dir="${package.dest}" />
+			</then>
+		</if>
+
+		<mkdir dir="${package.dest}" />
+		<mkdir dir="${package.dest}/packages" />
+
+		<phingcall target="build">
+			<property name="extension.path" value="plugins/user/cbautocreate" />
+			<property name="manifest" value="cbautocreate.xml" />
+			<property name="manifest.use" value="1" />
+		</phingcall>
+
+		<phingcall target="zipall" />
+
+		<echo message="Package export directory ${package.dest}/packages" />
+
+	</target>
+
+	<target name="zipall">
+		<!-- Also make a Zip of everything called UNZIPFIRST.zip -->
+		<zip destfile="${package.dest}/packages/UNZIPFIRST.zip" basedir="${package.dest}/packages">
+			<fileset dir="${package.dest}/packages">
+				<include name="**" />
+				<exclude name=".*" />
+				<exclude name="*.tar.gz" />
+			</fileset>
+		</zip>
+	</target>
+
+	<target name="updates" description="Updates the update manifests.">
+		<property name="updates.dest" value="${package.dest}/updates" />
+
+		<!-- Check if the target folder exists. If not, create it -->
+		<if>
+			<not>
+				<available file="${updates.dest}" type="dir" />
+			</not>
+			<then>
+				<mkdir dir="${updates.dest}" />
+			</then>
+		</if>
+
+		<copy todir="${updates.dest}">
+			<!-- Copy the source files to the target folder -->
+			<fileset dir="${updates.dir}">
+				<include name="**" />
+				<exclude name=".*" />
+			</fileset>
+		</copy>
+
+
+		<foreach param="file.xml" absparam="absname" target="updates:updateXml">
+			<fileset dir="${updates.dest}">
+				<type type="file" />
+			</fileset>
+		</foreach>
+	</target>
+
+	<target name="updates:updateXml">
+		<if>
+			<isset property="file.xml" />
+			<then>
+				<!-- TODO put in native PHP script to do this - use xmlstarlet for now -->
+				<property name="path.xml" value="${updates.dest}/${file.xml}" />
+				<echo msg="xmlstarlet ed -P -L -u '/extensionset/extension/@version' --value '${package.version}' '${path.xml}'" />
+				<exec command="xmlstarlet ed -P -L -u '/extensionset/extension/@version' --value '${package.version}' '${path.xml}'" checkreturn="false" />
+			</then>
+		</if>
+	</target>
+
+
+	<target name="package" description="Creates several packages after the build to package packages.">
+		<property name="manifest.source" value="${template.dir}/${manifest}" />
+		<xmlproperty file="${manifest.source}" collapseAttributes="true" />
+
+		<property name="extension.dest" value="${package.dest}/pkg_${extension.packagename}" />
+
+		<!-- Check if the target folder exists. If not, create it -->
+		<if>
+			<not>
+				<available file="${extension.dest}" type="dir" />
+			</not>
+			<then>
+				<mkdir dir="${extension.dest}" />
+			</then>
+		</if>
+
+		<property name="manifest.dest" value="${extension.dest}/${manifest}" />
+
+		<copy file="${manifest.source}" tofile="${manifest.dest}" overwrite="true" />
+
+		<phingcall target="prep:updateXml">
+			<property name="path.xml" value="${manifest.dest}" override="true" />
+		</phingcall>
+
+		<foreach list="${extension.files.file}" param="filename" target="prep:copyFiles">
+			<property name="extension.path" value="${package.dest}/packages" override="true" />
+		</foreach>
+
+		<!-- Add the scriptfile to the extension -->
+		<if>
+			<isset property="extension.scriptfile" />
+			<then>
+				<echo message="Adding install script ${extension.scriptfile}" />
+				<copy file="${script.dir}/${extension.scriptfile}" tofile="${extension.dest}/${extension.scriptfile}" overwrite="true" />
+			</then>
+		</if>
+
+		<if>
+			<isset property="extension.languages.language" />
+			<then>
+				<!-- Create the lang/en-GB strucutre for now until we have sorted out these XMLs -->
+				<if>
+					<available file="${extension.dest}/language" type="dir" />
+					<then>
+						<delete dir="${extension.dest}/language" />
+					</then>
+				</if>
+
+				<!-- TODO fix this - or just add as we go along -->
+				<mkdir dir="${extension.dest}/language" />
+				<mkdir dir="${extension.dest}/language/en-GB" />
+
+				<foreach list="${extension.languages.language}" param="lang" target="prep:copyLang" />
+			</then>
+		</if>
+
+		<!-- Switch to tell this task to make the zip files. Default is on. -->
+		<if>
+			<not>
+				<isset property="build.compress" />
+			</not>
+			<then>
+				<property name="build.compress" value="1" />
+			</then>
+		</if>
+
+		<!-- Start the compress if specified -->
+		<if>
+			<equals arg1="${build.compress}" arg2="1" />
+			<then>
+				<phingcall target="build:compress">
+					<property name="extension.name" value="pkg_${extension.packagename}" override="true" />
+				</phingcall>
+			</then>
+		</if>
+
+	</target>
+
+
+	<target name="build" description="Packages the extension for delivery." depends="prep">
+
+		<echo message="Building Package ${extension.name}" />
+
+		<!-- Switch to tell this task to make the zip files. Default is on. -->
+		<if>
+			<not>
+				<isset property="build.compress" />
+			</not>
+			<then>
+				<property name="build.compress" value="1" />
+			</then>
+		</if>
+
+		<!-- Start the compress if specified -->
+		<if>
+			<equals arg1="${build.compress}" arg2="1" />
+			<then>
+				<phingcall target="build:compress">
+					<property name="extension.name" value="${extension.name}" override="true" />
+				</phingcall>
+			</then>
+		</if>
+
+	</target>
+
+
+
+	<target name="prep" description="Copies the extension file and directories to the package destination.">
+
+		<!-- The following options are for picking up the right files/folders. -->
+		<if>
+			<not>
+				<isset property="manifest" />
+			</not>
+			<then>
+				<property name="manifest" value="${extension.name}.xml" />
+			</then>
+		</if>
+
+		<property name="manifest.source" value="${extension.path}/${manifest}" />
+
+		<!-- Use the Manifest file to populate extension.* -->
+		<if>
+			<equals arg1="${manifest.use}" arg2="1" />
+			<then>
+				<xmlproperty file="${manifest.source}" collapseAttributes="true" />
+			</then>
+		</if>
+
+		<property name="extension.dest" value="${package.dest}/${extension.name}" override="true" />
+		<property name="manifest.dest" value="${extension.dest}/${manifest}" />
+
+		<!-- Check if the target folder exists. If not, create it -->
+		<if>
+			<not>
+				<available file="${extension.dest}" type="dir" />
+			</not>
+			<then>
+				<mkdir dir="${extension.dest}" />
+			</then>
+		</if>
+
+		<if>
+			<or>
+				<isset property="extension.build.folder" />
+				<isset property="extension.build.filename" />
+			</or>
+			<then>
+				<echo message="Folders: ${extension.build.folder}" />
+				<echo message="File: ${extension.build.filename}" />
+				<!-- Copy folders and files one by one -->
+				<if>
+					<isset property="extension.build.folder" />
+					<then>
+						<foreach list="${extension.build.folder}" param="folder" target="prep:createFolder" />
+					</then>
+				</if>
+				<if>
+					<isset property="extension.build.filename" />
+					<then>
+						<foreach list="${extension.build.filename}" param="filename" target="prep:copyFiles" />
+					</then>
+				</if>
+			</then>
+			<else>
+				<copy todir="${extension.dest}">
+					<!-- Copy the source files to the target folder -->
+					<fileset dir="${extension.path}">
+						<include name="**" />
+						<exclude name=".*" />
+						<exclude name="index.html" />
+						<exclude name="LICENSE.txt" />
+					</fileset>
+				</copy>
+			</else>
+		</if>
+
+		<!-- Add the scriptfile to the extension -->
+		<if>
+			<isset property="extension.scriptfile" />
+			<then>
+				<echo message="Adding install script ${extension.scriptfile}" />
+				<copy file="${script.dir}/${extension.scriptfile}" tofile="${extension.dest}/${extension.scriptfile}" overwrite="true" />
+			</then>
+		</if>
+
+		<copy todir="${extension.dest}">
+			<!-- Copy the index and license template files to the target folder -->
+			<fileset dir="${template.dir}">
+				<include name="LICENSE.txt" />
+				<include name="index.html" />
+			</fileset>
+		</copy>
+
+		<!-- Puts index.html in all subdirs -->
+		<foreach param="path.dir" absparam="absname" target="prep:copyIndex">
+		  <fileset dir="${extension.dest}">
+		        <type type="dir" />
+		        <depth max="20" min="0" />
+		  </fileset>
+		</foreach>
+
+		<phingcall target="prep:updateXml">
+			<property name="path.xml" value="${extension.dest}/${manifest}" override="true" />
+		</phingcall>
+
+
+		<!-- REMOVE IF NOT USED -->
+		<if>
+			<equals arg1="${extension.type}" arg2="component" />
+			<then>
+
+				<if>
+					<available file="${extension.dest}/sql/updates/mysql" type="dir" />
+					<then>
+						<echo message="Touch the update SQL so to ensure no errors on update" />
+						<touch file="${extension.dest}/sql/updates/mysql/${package.version}.sql" />
+					</then>
+				</if>
+
+			</then>
+
+			<elseif>
+				<equals arg1="${extension.type}" arg2="library" />
+				<then>
+					<echo message="Library" />
+
+				</then>
+			</elseif>
+		</if>
+
+		<!-- Due to having multiple locations for the language XML, we need to provide it to a tmp variable -->
+		<if>
+			<isset property="extension.languages.language" />
+			<then>
+				<property name="temp.languages" value="${extension.languages.language}" />
+			</then>
+			<elseif>
+				<isset property="extension.administration.languages.language" />
+				<then>
+					<property name="temp.languages" value="${extension.administration.languages.language}" />
+				</then>
+			</elseif>
+		</if>
+
+
+		<if>
+			<isset property="temp.languages" />
+			<then>
+				<!-- Create the lang/en-GB strucutre for now until we have sorted out these XMLs -->
+				<if>
+					<available file="${extension.dest}/language" type="dir" />
+					<then>
+						<delete dir="${extension.dest}/language" />
+					</then>
+				</if>
+
+				<!-- TODO fix this - or just add as we go along -->
+				<mkdir dir="${extension.dest}/language" />
+				<mkdir dir="${extension.dest}/language/en-GB" />
+
+				<foreach list="${temp.languages}" param="lang" target="prep:copyLang" />
+			</then>
+		</if>
+
+
+	</target>
+
+
+	<target name="prep:copyLang">
+		<property name="lang.dest" value="${extension.dest}/${lang}" />
+
+		<!-- Find where the language source is (i.e. admin or site) -->
+		<if>
+			<available file="${lang}" type="file" />
+			<then>
+				<property name="lang.source" value="${lang}" />
+			</then>
+			<elseif>
+				<available file="administrator/${lang}" type="file" />
+				<then>
+					<property name="lang.source" value="administrator/${lang}" />
+				</then>
+			</elseif>
+		</if>
+
+		<!-- Delete any existing language files at the destination -->
+		<if>
+			<available file="${lang.dest}" type="file" />
+			<then>
+				<delete file="${lang.dest}" />
+			</then>
+		</if>
+
+		<!-- Do the language copy -->
+		<if>
+			<isset property="lang.source" />
+			<then>
+				<copy file="${lang.source}" tofile="${lang.dest}" overwrite="true" />
+			</then>
+		</if>
+	</target>
+
+
+
+	<target name="prep:createFolder">
+		<property name="folder.dest" value="${extension.dest}/${folder}" />
+
+		<if>
+			<available file="${folder.dest}" type="dir" />
+			<then>
+				<delete dir="${folder.dest}" />
+			</then>
+		</if>
+
+		<mkdir dir="${folder.dest}" />
+	</target>
+
+
+
+	<target name="prep:copyFiles">
+		<property name="file.dest" value="${extension.dest}/${filename}" />
+		<property name="file.source" value="${extension.path}/${filename}" />
+
+		<if>
+			<available file="${file.dest}" type="file" />
+			<then>
+				<delete file="${file.dest}" />
+			</then>
+		</if>
+
+		<copy file="${file.source}" tofile="${file.dest}" overwrite="true" />
+	</target>
+
+
+
+	<target name="prep:copyIndex">
+		<copy todir="${absname}">
+			<!-- Copy the index template file to the target folder -->
+			<fileset dir="${template.dir}">
+				<include name="index.html" />
+			</fileset>
+		</copy>
+	</target>
+
+
+
+	<target name="build:compress" description="Compresses each extension.">
+		<if>
+			<isset property="extension.name" />
+			<then>
+				<property name="path.tar" value="${package.dest}/packages/${extension.name}.tar.gz" />
+				<property name="path.zip" value="${package.dest}/packages/${extension.name}.zip" />
+				<property name="path.source" value="${extension.dest}" />
+
+				<!-- Build the TAR file -->
+				<if>
+					<available file="${path.tar}" type="file" />
+					<then>
+						<delete file="${path.tar}" />
+					</then>
+				</if>
+				<tar destfile="${path.tar}"
+					basedir="${path.source}"
+					includeEmptyDirs="0"
+					compression="gzip"
+				>
+					<fileset dir="${path.source}">
+						<include name="**" />
+						<exclude name=".*" />
+					</fileset>
+				</tar>
+
+				<!-- Build the ZIP file -->
+				<if>
+					<available file="${path.zip}" type="file" />
+					<then>
+						<delete file="${path.zip}" />
+					</then>
+				</if>
+				<zip destfile="${path.zip}" basedir="${path.source}">
+					<fileset dir="${path.source}">
+						<include name="**" />
+						<exclude name=".*" />
+					</fileset>
+				</zip>
+
+			</then>
+		</if>
+	</target>
+
+	<target name="prep:updateXml" description="Updates the XML manifest fields.">
+		<if>
+			<isset property="path.xml" />
+			<then>
+				<!-- TODO put in native PHP script to do this - use xmlstarlet for now -->
+				<exec command="xmlstarlet ed -P -L -u '/extension/version' --value '${package.version}' '${path.xml}'" checkreturn="false" />
+				<exec command="xmlstarlet ed -P -L -u '/extension/license' --value 'GNU General Public License version 2 or later; see LICENSE.txt' '${path.xml}'" checkreturn="false" />
+				<exec command="xmlstarlet ed -P -L -u '/extension/copyright' --value 'Copyright (C) 2014 Shaun Maunder. All rights reserved.' '${path.xml}'" checkreturn="false" />
+				<exec command="xmlstarlet ed -P -L -u '/extension/author' --value 'Shaun Maunder' '${path.xml}'" checkreturn="false" />
+				<exec command="xmlstarlet ed -P -L -u '/extension/authorEmail' --value 'shaun@shmanic.com' '${path.xml}'" checkreturn="false" />
+				<exec command="xmlstarlet ed -P -L -u '/extension/authorUrl' --value 'www.shmanic.com' '${path.xml}'" checkreturn="false" />
+				<exec command="xmlstarlet ed -P -L -u '/extension/buildDate' --value '${DATE}' '${path.xml}'" checkreturn="false" />
+			</then>
+		</if>
+	</target>
+
+</project>

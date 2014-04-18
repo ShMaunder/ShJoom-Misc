@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension version="2.5" type="plugin" group="user" method="upgrade">
+	<name>plg_user_cbautocreate</name>
+	<author>Shaun Maunder</author>
+	<creationDate>April 2012</creationDate>
+	<copyright>Copyright (C) 2013 Shaun Maunder. All rights reserved.</copyright>
+	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+	<authorEmail>shaun@shmanic.com</authorEmail>
+	<authorUrl>www.shmanic.com</authorUrl>
+	<version>1.1.0</version>
+	<buildDate></buildDate>
+	<description>PLG_USER_CBAUTOCREATE_XML_DESCRIPTION</description>
+	<files>
+		<filename plugin="cbautocreate">cbautocreate.php</filename>
+		<filename>index.html</filename>
+	</files>
+	<languages>
+		<language tag="en-GB">language/en-GB/en-GB.plg_user_cbautocreate.ini</language>
+		<language tag="en-GB">language/en-GB/en-GB.plg_user_cbautocreate.sys.ini</language>
+	</languages>
+	<config>
+		<fields name="params">
+			<fieldset name="basic">
+				<field name="only_new" type="radio" default="1" class="btn-group" description="PLG_USER_CBAUTOCREATE_FIELD_ONLY_NEW_DESC" label="PLG_USER_CBAUTOCREATE_FIELD_ONLY_NEW_LABEL">
+					<option value="0">JNo</option>
+					<option value="1">JYes</option>
+				</field>
+			</fieldset>
+		</fields>
+	</config>
+</extension>
